@@ -25,6 +25,10 @@ model User {
   githubUrl     String?
   linkedinUrl   String?
 
+  refreshToken String?
+
+  lastLoginAt DateTime?
+
   isActive      Boolean  @default(true)
 
   createdAt     DateTime @default(now())
