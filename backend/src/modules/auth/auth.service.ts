@@ -1,4 +1,4 @@
-import jwt from "jsonwebtoken";
+import jwt, { SignOptions } from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
@@ -52,16 +52,19 @@ export const loginUser = async (
     throw new Error("Invalid email or password");
   }
 
-  const token = jwt.sign(
+  const signOptions: SignOptions = {
+  expiresIn: env.JWT_EXPIRES_IN as SignOptions["expiresIn"],
+};
+
+const token = jwt.sign(
   {
     id: user.id,
     email: user.email,
   },
   env.JWT_SECRET,
-  {
-    expiresIn: "7d",
-  }
+  signOptions
 );
+
   const { passwordHash, ...safeUser } = user;
 
   return {
