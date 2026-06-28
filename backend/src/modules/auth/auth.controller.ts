@@ -1,8 +1,7 @@
-import { Request, Response } from "express";
-import {
-  registerUser,
-  loginUser,
-} from "./auth.service";
+import { Response } from "express";
+import { Request } from "express";
+import { registerUser, loginUser } from "./auth.service";
+import { AuthRequest } from "../../middleware/auth.middleware";
 
 //register function
 export const register = async (
@@ -58,5 +57,17 @@ export const login = async (
     });
 
   }
+
+};
+
+export const me = async (
+  req: AuthRequest,
+  res: Response
+) => {
+
+  return res.json({
+    success: true,
+    user: req.user,
+  });
 
 };
