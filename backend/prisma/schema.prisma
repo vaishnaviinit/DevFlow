@@ -7,62 +7,47 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String            @id @default(cuid())
+  name         String
+  email        String            @unique
+  passwordHash String
+  avatar       String?
+  bio          String?
+  githubUrl    String?
+  linkedinUrl  String?
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  lastLoginAt  DateTime?
+  refreshToken String?
+  memberships  WorkspaceMember[]
+}
+
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     WorkspaceMember[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id])
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, userId])
+}
+
 enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
-}
-
-model User {
-  id            String   @id @default(cuid())
-  name          String
-  email         String   @unique
-  passwordHash  String
-
-  avatar        String?
-  bio           String?
-
-  githubUrl     String?
-  linkedinUrl   String?
-
-  refreshToken String?
-
-  lastLoginAt DateTime?
-
-  isActive      Boolean  @default(true)
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  memberships   WorkspaceMember[]
-}
-
-model Workspace {
-  id            String   @id @default(cuid())
-
-  name          String
-  description   String?
-
-  ownerId       String
-
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-
-  members       WorkspaceMember[]
-}
-
-model WorkspaceMember {
-  id            String         @id @default(cuid())
-
-  workspaceId   String
-  userId        String
-
-  role          WorkspaceRole  @default(MEMBER)
-
-  joinedAt      DateTime       @default(now())
-
-  workspace     Workspace      @relation(fields: [workspaceId], references: [id])
-  user          User           @relation(fields: [userId], references: [id])
-
-  @@unique([workspaceId, userId])
 }
