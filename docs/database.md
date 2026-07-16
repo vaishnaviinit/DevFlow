@@ -19,7 +19,7 @@ This document describes the database as it actually is, and the shape it is plan
 - **Timestamps:** models carry `createdAt` and `updatedAt`, managed by Prisma.
 
 > [!IMPORTANT]
-> Only three models exist today: `User`, `Workspace`, and `WorkspaceMember` (plus the `WorkspaceRole` enum). Everything else on the [product roadmap](roadmap.md) — Project, Task, Message, Whiteboard, Notification, and so on — is **planned** and not yet in the schema. This document marks each clearly.
+> Implemented today: `User`, `Workspace`, `WorkspaceMember`, and `Project` (with the `WorkspaceRole` and `ProjectStatus` enums). The rest of the [product roadmap](roadmap.md) — Task, Message, Whiteboard, Notification, and so on — is **planned** and not yet in the schema. This document marks each clearly.
 
 ---
 
@@ -27,20 +27,22 @@ This document describes the database as it actually is, and the shape it is plan
 
 ```prisma
 model User {
-  id           String            @id @default(cuid())
-  name         String
-  email        String            @unique
-  passwordHash String
-  avatar       String?
-  bio          String?
-  githubUrl    String?
-  linkedinUrl  String?
-  isActive     Boolean           @default(true)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  lastLoginAt  DateTime?
-  refreshToken String?
-  memberships  WorkspaceMember[]
+  id              String            @id @default(cuid())
+  name            String
+  email           String            @unique
+  passwordHash    String
+  avatar          String?
+  bio             String?
+  githubUrl       String?
+  linkedinUrl     String?
+  isActive        Boolean           @default(true)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  lastLoginAt     DateTime?
+  refreshToken    String?
+  memberships     WorkspaceMember[]
+  ownedWorkspaces Workspace[]       @relation("WorkspaceOwner")
+  createdProjects Project[]         @relation("ProjectCreator")
 }
 
 model Workspace {
@@ -50,7 +52,10 @@ model Workspace {
   ownerId     String
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+  owner       User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
   members     WorkspaceMember[]
+  projects    Project[]
 }
 
 model WorkspaceMember {
@@ -63,12 +68,36 @@ model WorkspaceMember {
   workspace   Workspace     @relation(fields: [workspaceId], references: [id])
 
   @@unique([workspaceId, userId])
+  @@index([userId])
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  workspaceId String
+  title       String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  color       String?
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  creator     User          @relation("ProjectCreator", fields: [createdBy], references: [id])
+
+  @@index([workspaceId])
 }
 
 enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
 }
 ```
 
@@ -157,7 +186,6 @@ erDiagram
 
 | Planned model | Purpose |
 |---|---|
-| `Project` | Groups tasks inside a workspace |
 | `Task` | A unit of work with status, priority, assignee, due date |
 | `Message` | A chat message in a workspace |
 | `Whiteboard` / `WhiteboardElement` | A canvas and the shapes on it |
@@ -170,12 +198,14 @@ These will follow the same conventions: `cuid()` ids, timestamps, foreign keys w
 
 ## Migrations
 
-Prisma migrations are versioned SQL files in `prisma/migrations/`. Two exist so far:
+Prisma migrations are versioned SQL files in `prisma/migrations/`:
 
 | Migration | Contents |
 |---|---|
 | `..._init` | Created `User`, `Workspace`, `WorkspaceMember`, and the `WorkspaceRole` enum |
 | `..._auth_fields` | Added authentication-related fields to `User` |
+| `..._workspace_module` | Added `Workspace.deletedAt`, the owner relation, and `WorkspaceMember(userId)` index |
+| `..._project_module` | Added the `Project` model, the `ProjectStatus` enum, and its indexes/relations |
 
 **Workflow:**
 

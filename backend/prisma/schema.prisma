@@ -23,6 +23,7 @@ model User {
   refreshToken String?
   memberships  WorkspaceMember[]
   ownedWorkspaces Workspace[]     @relation("WorkspaceOwner")
+  createdProjects Project[]       @relation("ProjectCreator")
 }
 
 model Workspace {
@@ -35,6 +36,7 @@ model Workspace {
   deletedAt   DateTime?
   owner       User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
   members     WorkspaceMember[]
+  projects    Project[]
 }
 
 model WorkspaceMember {
@@ -54,4 +56,27 @@ enum WorkspaceRole {
   OWNER
   ADMIN
   MEMBER
+}
+
+model Project {
+  id          String        @id @default(cuid())
+  workspaceId String
+  title       String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  color       String?
+  createdBy   String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  deletedAt   DateTime?
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+  creator     User          @relation("ProjectCreator", fields: [createdBy], references: [id])
+
+  @@index([workspaceId])
+}
+
+enum ProjectStatus {
+  ACTIVE
+  ARCHIVED
+  COMPLETED
 }

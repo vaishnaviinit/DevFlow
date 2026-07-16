@@ -244,6 +244,55 @@ Errors: `400` invalid input, `403` caller is not `OWNER`/`ADMIN`, `404` no user 
 > [!NOTE]
 > A runnable Postman collection covering every workspace endpoint and its error cases lives at `backend/postman/devflow-workspace.postman_collection.json`.
 
+### Projects — `/api/projects`
+
+Projects belong to a workspace. All routes require a Bearer token and workspace membership. On create and list the workspace is named in the request (body/query); on `:id` routes it is derived from the project. Authorization is enforced by the project guards (see [workspace.md](workspace.md#authorization-model) for the shared role model).
+
+| Method | Path | Min. role | Description |
+|---|---|---|---|
+| `POST` | `/api/projects` | `OWNER`/`ADMIN` | Create a project (`workspaceId` in body) |
+| `GET` | `/api/projects?workspaceId=...` | member | List active projects in a workspace |
+| `GET` | `/api/projects/:id` | member | Get one project |
+| `PATCH` | `/api/projects/:id` | `OWNER`/`ADMIN` | Update title/description/status/color |
+| `DELETE` | `/api/projects/:id` | `OWNER`/`ADMIN` | Soft-delete the project |
+
+#### `POST /api/projects`
+
+**Request**
+
+```json
+{ "workspaceId": "cmrnju11...", "title": "Roadmap", "description": "Q3 plan", "status": "ACTIVE", "color": "#2D9CDB" }
+```
+
+`status` is one of `ACTIVE` (default), `ARCHIVED`, `COMPLETED`. `color` is an optional `#rrggbb` hex value.
+
+**Response — 201**
+
+```json
+{
+  "success": true,
+  "data": {
+    "project": {
+      "id": "cmrnju1c...",
+      "workspaceId": "cmrnju11...",
+      "title": "Roadmap",
+      "description": "Q3 plan",
+      "status": "ACTIVE",
+      "color": "#2D9CDB",
+      "createdBy": "cmrnjtza...",
+      "createdAt": "2026-07-16T13:32:49.359Z",
+      "updatedAt": "2026-07-16T13:32:49.359Z",
+      "deletedAt": null
+    }
+  }
+}
+```
+
+Errors: `400` invalid input or missing `workspaceId`, `403` caller is not `OWNER`/`ADMIN`, `404` workspace not found.
+
+> [!NOTE]
+> A runnable Postman collection for the project module lives at `backend/postman/devflow-project.postman_collection.json`.
+
 ---
 
 ## Planned Endpoints
@@ -253,7 +302,6 @@ These reflect the [roadmap](roadmap.md) and are not implemented. Paths are indic
 | Area | Example endpoints |
 |---|---|
 | Auth | `POST /api/auth/refresh`, `POST /api/auth/logout`, `POST /api/auth/forgot-password` |
-| Projects | `POST /api/projects`, `GET /api/workspaces/:id/projects` |
 | Tasks | `POST /api/tasks`, `PATCH /api/tasks/:id`, `GET /api/projects/:id/tasks` |
 | Chat | `GET /api/workspaces/:id/messages` (plus Socket.IO events) |
 | Notifications | `GET /api/notifications`, `PATCH /api/notifications/:id/read` |

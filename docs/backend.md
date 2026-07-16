@@ -24,7 +24,7 @@ Each feature lives in its own folder under `src/modules/` and is built from four
 | `*.service.ts` | Business logic and database access |
 | `*.validation.ts` | Zod schemas describing valid input |
 
-The **auth** and **workspace** modules are implemented; the workspace module also adds the `authorize()` RBAC middleware (see [workspace.md](workspace.md)). The remaining module folders are placeholders.
+The **auth**, **workspace**, and **project** modules are implemented; the workspace module adds the `authorize()` RBAC middleware, and the project module shows the same role model applied to a nested, workspace-scoped resource (see [workspace.md](workspace.md)). The remaining module folders are placeholders.
 
 ---
 

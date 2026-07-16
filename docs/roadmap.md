@@ -29,7 +29,8 @@ Done and working today.
 - [x] Documentation set (this `docs/` folder)
 - [x] Role-based access control (`authorize()` middleware, workspace-scoped)
 - [x] Workspace module: create, update, soft-delete, invite members, manage roles, leave
-- [x] Postman collection for the workspace module
+- [x] Project module: create, list, get, update, soft-delete (workspace-scoped, RBAC)
+- [x] Postman collections for the workspace and project modules
 
 ---
 
@@ -37,7 +38,6 @@ Done and working today.
 
 The immediate focus: build the remaining core collaboration features and complete authentication.
 
-- [ ] Project module: create and manage projects within a workspace
 - [ ] Task module: tasks with status, priority, assignee, and due date (Kanban)
 - [ ] Refresh tokens and token rotation
 - [ ] Logout and token revocation
