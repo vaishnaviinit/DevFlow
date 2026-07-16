@@ -24,7 +24,7 @@ Each feature lives in its own folder under `src/modules/` and is built from four
 | `*.service.ts` | Business logic and database access |
 | `*.validation.ts` | Zod schemas describing valid input |
 
-Only the **auth** module is implemented today. Every other module folder is a placeholder.
+The **auth** and **workspace** modules are implemented; the workspace module also adds the `authorize()` RBAC middleware (see [workspace.md](workspace.md)). The remaining module folders are placeholders.
 
 ---
 
@@ -38,6 +38,7 @@ backend/src/
 │   └── prisma.ts          # The single PrismaClient instance
 ├── middleware/
 │   ├── auth.middleware.ts     # Verifies the JWT, attaches req.user
+│   ├── authorize.middleware.ts # Workspace-scoped RBAC: checks role, attaches req.membership
 │   ├── validate.middleware.ts # Validates the request body with a Zod schema
 │   └── error.middleware.ts    # Central error handler and 404 handler
 ├── utils/
@@ -326,7 +327,7 @@ Do not import another module's internal files. If two modules need to share logi
 - A shared `AsyncHandler`-aware validation for params and query, not just the body.
 - Automated tests for services and routes (for example, Vitest and Supertest); there are currently none.
 - Route the validation middleware's error through `AppError` so every error uses one path.
-- Role-based access control middleware (`requireRole`) once workspaces are built (see [authentication.md](authentication.md)).
+- ~~Role-based access control middleware once workspaces are built~~ — done: `authorize()`, workspace-scoped (see [workspace.md](workspace.md)).
 
 ---
 
@@ -343,7 +344,7 @@ Do not import another module's internal files. If two modules need to share logi
 
 ## Developer Notes
 
-- Non-auth module folders exist but are empty. Use auth as the reference implementation.
+- Remaining module folders (project, task, chat, etc.) are empty. Use **auth** and **workspace** as reference implementations — workspace shows the pattern for a resource with nested members and RBAC.
 - Express 5 forwards rejected promises to the error handler automatically, but `asyncHandler` is kept for clarity and portability.
 - The `me` endpoint fetches the user fresh from the database rather than trusting the token payload, so profile changes and deactivations take effect immediately.
 

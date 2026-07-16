@@ -258,7 +258,7 @@ app.use("/api/auth", authLimiter, authRoutes);
 | Rate limiting on auth | In place | Single-instance only for now |
 | Security headers, CORS | In place | Helmet and restricted origins |
 | Refresh tokens and revocation | Planned | See below |
-| Role-based access control | Planned | Uses the workspace role enum |
+| Role-based access control | In place (workspace-scoped) | `authorize()` middleware; see [workspace.md](workspace.md) |
 | Email verification, password reset | Planned | — |
 
 ---
@@ -269,9 +269,9 @@ app.use("/api/auth", authLimiter, authRoutes);
 
 Access tokens are short-lived and cannot be revoked before they expire. The plan is a standard refresh-token flow: a short-lived access token plus a longer-lived refresh token that can be rotated and revoked. The `User` model already has a `refreshToken` field reserved for this ([database.md](database.md)), but it is not yet used. This also enables a real logout (invalidating the refresh token).
 
-### Role-based access control (RBAC)
+### Role-based access control (RBAC) — implemented for workspaces
 
-The `WorkspaceMember` model has a role field (`OWNER`, `ADMIN`, `MEMBER`). Once workspaces are built, a `requireRole` middleware will check a user's role for a given workspace before allowing an action. This belongs in middleware so it composes with `authenticate`, the same way validation does.
+The `WorkspaceMember` model has a role field (`OWNER`, `ADMIN`, `MEMBER`). The `authorize(...)` middleware checks a caller's role for a given workspace before allowing an action, composing with `authenticate` exactly as validation does. It is the single place workspace roles are checked. See [workspace.md](workspace.md#authorization-model). Applying the same pattern to future workspace-scoped resources (projects, tasks) is the remaining work.
 
 ### Email verification and password reset
 

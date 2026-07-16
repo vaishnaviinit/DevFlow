@@ -1,7 +1,7 @@
 # API Reference
 
 > The conventions every DevFlow endpoint follows, and the endpoints available today.
-> Related: [backend.md](backend.md) · [authentication.md](authentication.md) · [architecture.md](architecture.md)
+> Related: [backend.md](backend.md) · [authentication.md](authentication.md) · [workspace.md](workspace.md) · [architecture.md](architecture.md)
 
 ---
 
@@ -19,7 +19,7 @@ This document defines how the DevFlow HTTP API behaves: its base path, response 
 - **Authentication:** a Bearer token in the `Authorization` header for protected routes (see [authentication.md](authentication.md)).
 
 > [!IMPORTANT]
-> Only the authentication endpoints and a health check exist today. Every other endpoint listed under [Planned Endpoints](#planned-endpoints) is not yet implemented.
+> Implemented today: the **authentication** and **workspace** modules, plus a health check. Every endpoint listed under [Planned Endpoints](#planned-endpoints) is not yet implemented.
 
 ---
 
@@ -69,9 +69,9 @@ The success envelope is produced by the `sendSuccess` helper; error envelopes ar
 | `201 Created` | Resource created | Successful registration |
 | `400 Bad Request` | Invalid input | Zod validation failure |
 | `401 Unauthorized` | Not authenticated | Missing/invalid token, wrong credentials |
-| `403 Forbidden` | Authenticated but not allowed | Reserved for role checks (planned) |
-| `404 Not Found` | No such route or resource | Unknown route, missing record |
-| `409 Conflict` | Conflicts with existing state | Registering an email that already exists |
+| `403 Forbidden` | Authenticated but not allowed | Not a workspace member, or role too low for the action |
+| `404 Not Found` | No such route or resource | Unknown route, missing/soft-deleted record |
+| `409 Conflict` | Conflicts with existing state | Duplicate email on register, or user already a member |
 | `429 Too Many Requests` | Rate limit exceeded | Too many auth requests |
 | `500 Internal Server Error` | Unexpected error | Uncaught/unexpected failure (details hidden) |
 
@@ -167,6 +167,83 @@ Errors: `401` missing/invalid/expired token.
 > [!NOTE]
 > The user object never includes `passwordHash` or `refreshToken`. See [authentication.md](authentication.md#preventing-password-hash-leakage).
 
+### Workspaces — `/api/workspaces`
+
+All workspace routes require a Bearer token. Routes with an `:id` are workspace-scoped: the caller must be a member, and some actions require a minimum role. Authorization is enforced by the `authorize(...)` middleware; see [workspace.md](workspace.md) for the full model.
+
+| Method | Path | Min. role | Description |
+|---|---|---|---|
+| `POST` | `/api/workspaces` | any user | Create a workspace; caller becomes `OWNER` |
+| `GET` | `/api/workspaces` | any user | List the workspaces the caller belongs to |
+| `GET` | `/api/workspaces/:id` | member | Get one workspace (includes caller's role) |
+| `PATCH` | `/api/workspaces/:id` | `OWNER`/`ADMIN` | Rename / update description |
+| `DELETE` | `/api/workspaces/:id` | `OWNER` | Soft-delete the workspace |
+| `POST` | `/api/workspaces/:id/invite` | `OWNER`/`ADMIN` | Add an existing user by email |
+| `GET` | `/api/workspaces/:id/members` | member | List members |
+| `PATCH` | `/api/workspaces/:id/members/:memberId` | `OWNER`/`ADMIN` | Change a member's role |
+| `DELETE` | `/api/workspaces/:id/members/:memberId` | `OWNER`/`ADMIN` | Remove a member |
+| `POST` | `/api/workspaces/:id/leave` | member | Leave the workspace |
+
+#### `POST /api/workspaces`
+
+**Request**
+
+```json
+{ "name": "Alpha Team", "description": "Our workspace" }
+```
+
+**Response — 201**
+
+```json
+{
+  "success": true,
+  "data": {
+    "workspace": {
+      "id": "cmrnij54...",
+      "name": "Alpha Team",
+      "description": "Our workspace",
+      "ownerId": "cmrnij3m...",
+      "createdAt": "2026-07-16T12:56:21.397Z",
+      "updatedAt": "2026-07-16T12:56:21.397Z",
+      "deletedAt": null
+    }
+  }
+}
+```
+
+Errors: `400` invalid input, `401` no token.
+
+#### `POST /api/workspaces/:id/invite`
+
+Adds an already-registered user to the workspace by email. No email is sent. `role` defaults to `MEMBER`; only `ADMIN`/`MEMBER` are assignable.
+
+**Request**
+
+```json
+{ "email": "member@example.com", "role": "MEMBER" }
+```
+
+**Response — 201**
+
+```json
+{
+  "success": true,
+  "data": {
+    "member": {
+      "id": "cmrnij5s...",
+      "role": "MEMBER",
+      "joinedAt": "2026-07-16T12:56:22.287Z",
+      "user": { "id": "cmrnij4n...", "name": "Member User", "email": "member@example.com", "avatar": null }
+    }
+  }
+}
+```
+
+Errors: `400` invalid input, `403` caller is not `OWNER`/`ADMIN`, `404` no user with that email or workspace not found, `409` user already a member.
+
+> [!NOTE]
+> A runnable Postman collection covering every workspace endpoint and its error cases lives at `backend/postman/devflow-workspace.postman_collection.json`.
+
 ---
 
 ## Planned Endpoints
@@ -176,7 +253,6 @@ These reflect the [roadmap](roadmap.md) and are not implemented. Paths are indic
 | Area | Example endpoints |
 |---|---|
 | Auth | `POST /api/auth/refresh`, `POST /api/auth/logout`, `POST /api/auth/forgot-password` |
-| Workspaces | `POST /api/workspaces`, `GET /api/workspaces`, `POST /api/workspaces/:id/members` |
 | Projects | `POST /api/projects`, `GET /api/workspaces/:id/projects` |
 | Tasks | `POST /api/tasks`, `PATCH /api/tasks/:id`, `GET /api/projects/:id/tasks` |
 | Chat | `GET /api/workspaces/:id/messages` (plus Socket.IO events) |

@@ -27,19 +27,21 @@ Done and working today.
 - [x] Fail-fast environment validation
 - [x] Central error handling and a standard response format
 - [x] Documentation set (this `docs/` folder)
+- [x] Role-based access control (`authorize()` middleware, workspace-scoped)
+- [x] Workspace module: create, update, soft-delete, invite members, manage roles, leave
+- [x] Postman collection for the workspace module
 
 ---
 
 ## Next
 
-The immediate focus: complete authentication and build the first collaboration features.
+The immediate focus: build the remaining core collaboration features and complete authentication.
 
-- [ ] Refresh tokens and token rotation
-- [ ] Logout and token revocation
-- [ ] Role-based access control (using the workspace role enum)
-- [ ] Workspace module: create, update, invite members, manage roles
 - [ ] Project module: create and manage projects within a workspace
 - [ ] Task module: tasks with status, priority, assignee, and due date (Kanban)
+- [ ] Refresh tokens and token rotation
+- [ ] Logout and token revocation
+- [ ] Ownership transfer for workspaces
 - [ ] Frontend: authentication screens and a dashboard shell
 
 ---
