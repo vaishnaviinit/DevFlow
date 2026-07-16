@@ -1,4 +1,4 @@
-import { Prisma, WorkspaceRole } from "@prisma/client";
+import { Prisma, WorkspaceRole, WorkspaceMember } from "@prisma/client";
 import { prisma } from "../../config/prisma";
 import { NotFound, Forbidden, Conflict } from "../../utils/app-error";
 import type {
@@ -20,17 +20,17 @@ const memberSelect = {
 } satisfies Prisma.WorkspaceMemberSelect;
 
 /**
- * Load a workspace (active only) together with the caller's membership.
+ * Load an active workspace together with the caller's membership.
  *
- * Central to workspace authorization: it resolves the resource and the caller's
- * role in one indexed query, and is the single place that decides "not found"
- * (404) versus "not a member" (403). Role assertions build on its result.
+ * This is the single source of truth for workspace-scoped access: it resolves
+ * the resource and the caller's role in one indexed query. The `authorize`
+ * middleware calls it to gate routes and to attach req.workspace / req.membership.
  *
  * Throws:
  *  - NotFound  if the workspace does not exist or is soft-deleted
  *  - Forbidden if the caller is not a member
  */
-const loadMembership = async (workspaceId: string, userId: string) => {
+export const loadMembership = async (workspaceId: string, userId: string) => {
   const workspace = await prisma.workspace.findFirst({
     where: { id: workspaceId, deletedAt: null },
     include: { members: { where: { userId } } },
@@ -49,15 +49,12 @@ const loadMembership = async (workspaceId: string, userId: string) => {
   return { workspace: workspaceData, membership };
 };
 
-/** Assert the caller's role is one of the allowed roles, else 403. */
-const assertRole = (role: WorkspaceRole, allowed: WorkspaceRole[]): void => {
-  if (!allowed.includes(role)) {
-    throw Forbidden("You do not have permission to perform this action");
-  }
-};
-
 /* ------------------------------------------------------------------ */
 /* Workspace                                                          */
+/*                                                                    */
+/* Role/membership authorization for :id routes is enforced by the    */
+/* `authorize` middleware before these run. Services own business     */
+/* rules and data access only.                                        */
 /* ------------------------------------------------------------------ */
 
 /**
@@ -96,37 +93,23 @@ export const getUserWorkspaces = async (userId: string) => {
   return memberships.map(({ workspace, role }) => ({ ...workspace, role }));
 };
 
-/** Get a single workspace the caller belongs to, including their role. */
-export const getWorkspaceById = async (workspaceId: string, userId: string) => {
-  const { workspace, membership } = await loadMembership(workspaceId, userId);
-  return { ...workspace, role: membership.role };
-};
-
-/** Rename / update a workspace. OWNER and ADMIN only. */
+/** Rename / update a workspace. Access gated by authorize("OWNER","ADMIN"). */
 export const updateWorkspace = async (
   workspaceId: string,
-  userId: string,
   input: UpdateWorkspaceInput
 ) => {
-  const { membership } = await loadMembership(workspaceId, userId);
-  assertRole(membership.role, [WorkspaceRole.OWNER, WorkspaceRole.ADMIN]);
-
   return prisma.workspace.update({
     where: { id: workspaceId },
     data: { name: input.name, description: input.description },
   });
 };
 
-/** Soft-delete a workspace (sets deletedAt). OWNER only. */
-export const deleteWorkspace = async (workspaceId: string, userId: string) => {
-  const { membership } = await loadMembership(workspaceId, userId);
-  assertRole(membership.role, [WorkspaceRole.OWNER]);
-
+/** Soft-delete a workspace. Access gated by authorize("OWNER"). */
+export const deleteWorkspace = async (workspaceId: string) => {
   await prisma.workspace.update({
     where: { id: workspaceId },
     data: { deletedAt: new Date() },
   });
-
   return { id: workspaceId };
 };
 
@@ -135,7 +118,8 @@ export const deleteWorkspace = async (workspaceId: string, userId: string) => {
 /* ------------------------------------------------------------------ */
 
 /**
- * Add an existing registered user to the workspace. OWNER and ADMIN only.
+ * Add an existing registered user to the workspace. Gated by
+ * authorize("OWNER","ADMIN").
  *
  * "Invite" here means adding a user who already has an account (no email is
  * sent). Inviting people who have not signed up (via link/email) is a separate,
@@ -143,12 +127,8 @@ export const deleteWorkspace = async (workspaceId: string, userId: string) => {
  */
 export const inviteMember = async (
   workspaceId: string,
-  actorUserId: string,
   input: InviteMemberInput
 ) => {
-  const { membership } = await loadMembership(workspaceId, actorUserId);
-  assertRole(membership.role, [WorkspaceRole.OWNER, WorkspaceRole.ADMIN]);
-
   const invitee = await prisma.user.findUnique({
     where: { email: input.email },
   });
@@ -169,10 +149,8 @@ export const inviteMember = async (
   });
 };
 
-/** List all members of a workspace. Any member may view. */
-export const getMembers = async (workspaceId: string, userId: string) => {
-  await loadMembership(workspaceId, userId);
-
+/** List all members of a workspace. Gated by authorize() (any member). */
+export const getMembers = async (workspaceId: string) => {
   return prisma.workspaceMember.findMany({
     where: { workspaceId },
     select: memberSelect,
@@ -180,16 +158,15 @@ export const getMembers = async (workspaceId: string, userId: string) => {
   });
 };
 
-/** Change a member's role. OWNER and ADMIN only. The owner's role is fixed. */
+/**
+ * Change a member's role. Gated by authorize("OWNER","ADMIN").
+ * The owner's role cannot be changed.
+ */
 export const updateMemberRole = async (
   workspaceId: string,
-  actorUserId: string,
   memberId: string,
   input: UpdateMemberRoleInput
 ) => {
-  const { membership } = await loadMembership(workspaceId, actorUserId);
-  assertRole(membership.role, [WorkspaceRole.OWNER, WorkspaceRole.ADMIN]);
-
   const target = await prisma.workspaceMember.findFirst({
     where: { id: memberId, workspaceId },
   });
@@ -207,15 +184,11 @@ export const updateMemberRole = async (
   });
 };
 
-/** Remove a member. OWNER and ADMIN only. The owner cannot be removed. */
-export const removeMember = async (
-  workspaceId: string,
-  actorUserId: string,
-  memberId: string
-) => {
-  const { membership } = await loadMembership(workspaceId, actorUserId);
-  assertRole(membership.role, [WorkspaceRole.OWNER, WorkspaceRole.ADMIN]);
-
+/**
+ * Remove a member. Gated by authorize("OWNER","ADMIN").
+ * The owner cannot be removed.
+ */
+export const removeMember = async (workspaceId: string, memberId: string) => {
   const target = await prisma.workspaceMember.findFirst({
     where: { id: memberId, workspaceId },
   });
@@ -230,10 +203,12 @@ export const removeMember = async (
   return { id: memberId };
 };
 
-/** Leave a workspace. The owner must transfer ownership or delete instead. */
-export const leaveWorkspace = async (workspaceId: string, userId: string) => {
-  const { membership } = await loadMembership(workspaceId, userId);
-
+/**
+ * Leave a workspace. Gated by authorize() (any member). The owner must transfer
+ * ownership or delete the workspace instead of leaving. Receives the caller's
+ * membership (already loaded by the middleware).
+ */
+export const leaveWorkspace = async (membership: WorkspaceMember) => {
   if (membership.role === WorkspaceRole.OWNER) {
     throw Forbidden(
       "The owner cannot leave the workspace; transfer ownership or delete it"
