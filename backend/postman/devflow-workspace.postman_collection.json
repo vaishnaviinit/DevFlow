@@ -1,0 +1,367 @@
+{
+  "info": {
+    "name": "DevFlow — Workspace Module",
+    "description": "Runnable collection for the workspace module (workspaces + members).\n\nRun the requests top to bottom: the Setup folder captures auth tokens, then Create Workspace captures the workspace id, and Invite Member captures the member id. All ids/tokens are stored as collection variables automatically.\n\nBase URL defaults to http://localhost:5000/api.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:5000/api" },
+    { "key": "ownerToken", "value": "" },
+    { "key": "memberToken", "value": "" },
+    { "key": "ownerEmail", "value": "" },
+    { "key": "memberEmail", "value": "" },
+    { "key": "workspaceId", "value": "" },
+    { "key": "memberId", "value": "" }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [{ "key": "token", "value": "{{ownerToken}}", "type": "string" }]
+  },
+  "item": [
+    {
+      "name": "Setup (Auth)",
+      "description": "Creates two accounts and stores their tokens. The owner creates and manages the workspace; the member is invited into it.",
+      "item": [
+        {
+          "name": "Register Owner",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('ownerEmail', 'owner+' + Date.now() + '@example.com');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const t = pm.response.json().data.token;",
+                  "pm.collectionVariables.set('ownerToken', t);",
+                  "pm.expect(t).to.be.a('string');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Owner User\",\n  \"email\": \"{{ownerEmail}}\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "code": 201,
+              "status": "Created",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"user\": { \"id\": \"clx...\", \"name\": \"Owner User\", \"email\": \"owner+...@example.com\" },\n    \"token\": \"eyJhbGciOi...\"\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Register Member",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.collectionVariables.set('memberEmail', 'member+' + Date.now() + '@example.com');"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('memberToken', pm.response.json().data.token);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/auth/register", "host": ["{{baseUrl}}"], "path": ["auth", "register"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Member User\",\n  \"email\": \"{{memberEmail}}\",\n  \"password\": \"password123\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Workspaces",
+      "item": [
+        {
+          "name": "Create Workspace",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "const ws = pm.response.json().data.workspace;",
+                  "pm.collectionVariables.set('workspaceId', ws.id);",
+                  "pm.test('caller is not exposed a password hash', () => pm.expect(JSON.stringify(ws)).to.not.include('passwordHash'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces", "host": ["{{baseUrl}}"], "path": ["workspaces"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Alpha Team\",\n  \"description\": \"Our workspace\"\n}"
+            },
+            "description": "Creates a workspace. The authenticated user becomes OWNER and a WorkspaceMember row is created automatically (in a transaction)."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "code": 201,
+              "status": "Created",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"workspace\": {\n      \"id\": \"cmrnij54...\",\n      \"name\": \"Alpha Team\",\n      \"description\": \"Our workspace\",\n      \"ownerId\": \"cmrnij3m...\",\n      \"createdAt\": \"2026-07-16T12:56:21.397Z\",\n      \"updatedAt\": \"2026-07-16T12:56:21.397Z\",\n      \"deletedAt\": null\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List My Workspaces",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/workspaces", "host": ["{{baseUrl}}"], "path": ["workspaces"] },
+            "description": "Lists active workspaces the caller belongs to, each annotated with the caller's role."
+          },
+          "response": [
+            {
+              "name": "200 OK",
+              "code": 200,
+              "status": "OK",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"workspaces\": [\n      { \"id\": \"cmrnij54...\", \"name\": \"Alpha Team\", \"ownerId\": \"cmrnij3m...\", \"deletedAt\": null, \"role\": \"OWNER\" }\n    ]\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "Get Workspace By Id",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}"] },
+            "description": "Returns a single workspace with the caller's role. 404 if not found or soft-deleted; 403 if the caller is not a member."
+          }
+        },
+        {
+          "name": "Update Workspace",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Alpha Renamed\"\n}" },
+            "description": "Rename / update description. OWNER or ADMIN only. At least one field is required."
+          }
+        },
+        {
+          "name": "Delete Workspace (soft)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}"] },
+            "description": "Soft-deletes the workspace (sets deletedAt). OWNER only. Run this last — subsequent reads of this workspace return 404."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Members",
+      "item": [
+        {
+          "name": "Invite Member",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 Created', () => pm.response.to.have.status(201));",
+                  "pm.collectionVariables.set('memberId', pm.response.json().data.member.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/invite", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}", "invite"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{memberEmail}}\",\n  \"role\": \"MEMBER\"\n}" },
+            "description": "Adds an existing registered user (by email) to the workspace. OWNER or ADMIN only. No email is sent. role defaults to MEMBER; only ADMIN/MEMBER are assignable."
+          },
+          "response": [
+            {
+              "name": "201 Created",
+              "code": 201,
+              "status": "Created",
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"data\": {\n    \"member\": {\n      \"id\": \"cmrnij5s...\",\n      \"role\": \"MEMBER\",\n      \"joinedAt\": \"2026-07-16T12:56:22.287Z\",\n      \"user\": { \"id\": \"cmrnij4n...\", \"name\": \"Member User\", \"email\": \"member+...@example.com\", \"avatar\": null }\n    }\n  }\n}"
+            }
+          ]
+        },
+        {
+          "name": "List Members",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}", "members"] },
+            "description": "Lists all members with a minimal public user view. Any member may view."
+          }
+        },
+        {
+          "name": "Update Member Role",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "PATCH",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members/{{memberId}}", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}", "members", "{{memberId}}"] },
+            "body": { "mode": "raw", "raw": "{\n  \"role\": \"ADMIN\"\n}" },
+            "description": "Changes a member's role. OWNER or ADMIN only. The owner's role cannot be changed (403)."
+          }
+        },
+        {
+          "name": "Remove Member",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/members/{{memberId}}", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}", "members", "{{memberId}}"] },
+            "description": "Removes a member. OWNER or ADMIN only. The owner cannot be removed (403). Note: 'Leave Workspace' below also removes the member row for the caller."
+          }
+        },
+        {
+          "name": "Leave Workspace",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('200 OK', () => pm.response.to.have.status(200));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{memberToken}}", "type": "string" }] },
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/leave", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}", "leave"] },
+            "description": "The caller (member token) leaves the workspace. The owner cannot leave (403)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorization & Error Cases",
+      "description": "Negative cases demonstrating validation, authentication, authorization, and conflict handling.",
+      "item": [
+        {
+          "name": "Create — No Token (401)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('401 Unauthorized', () => pm.response.to.have.status(401));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces", "host": ["{{baseUrl}}"], "path": ["workspaces"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"No Auth\"\n}" }
+          },
+          "response": [
+            { "name": "401", "code": 401, "status": "Unauthorized", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"success\": false,\n  \"message\": \"Authentication token missing\"\n}" }
+          ]
+        },
+        {
+          "name": "Create — Invalid Body (400)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('400 Bad Request', () => pm.response.to.have.status(400));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces", "host": ["{{baseUrl}}"], "path": ["workspaces"] },
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"A\"\n}" }
+          },
+          "response": [
+            { "name": "400", "code": 400, "status": "Bad Request", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"success\": false,\n  \"errors\": { \"name\": [\"Name must be at least 2 characters\"] }\n}" }
+          ]
+        },
+        {
+          "name": "Get — Not Found / Soft-Deleted (404)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('404 Not Found', () => pm.response.to.have.status(404));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/workspaces/does-not-exist", "host": ["{{baseUrl}}"], "path": ["workspaces", "does-not-exist"] }
+          },
+          "response": [
+            { "name": "404", "code": 404, "status": "Not Found", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"success\": false,\n  \"message\": \"Workspace not found\"\n}" }
+          ]
+        },
+        {
+          "name": "Delete — By Non-Owner (403)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('403 Forbidden', () => pm.response.to.have.status(403));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "auth": { "type": "bearer", "bearer": [{ "key": "token", "value": "{{memberToken}}", "type": "string" }] },
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}"] },
+            "description": "A non-owner attempts to delete the workspace. Delete is OWNER-only."
+          },
+          "response": [
+            { "name": "403", "code": 403, "status": "Forbidden", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"success\": false,\n  \"message\": \"You do not have permission to perform this action\"\n}" }
+          ]
+        },
+        {
+          "name": "Invite — Duplicate Member (409)",
+          "event": [
+            { "listen": "test", "script": { "exec": ["pm.test('409 Conflict', () => pm.response.to.have.status(409));"], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/workspaces/{{workspaceId}}/invite", "host": ["{{baseUrl}}"], "path": ["workspaces", "{{workspaceId}}", "invite"] },
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{memberEmail}}\"\n}" },
+            "description": "Inviting a user who is already a member returns 409."
+          },
+          "response": [
+            { "name": "409", "code": 409, "status": "Conflict", "header": [{ "key": "Content-Type", "value": "application/json" }], "body": "{\n  \"success\": false,\n  \"message\": \"User is already a member of this workspace\"\n}" }
+          ]
+        }
+      ]
+    }
+  ]
+}
