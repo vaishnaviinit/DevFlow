@@ -5,6 +5,7 @@ import rateLimit from "express-rate-limit";
 
 import { env } from "./config/env";
 import authRoutes from "./modules/auth/auth.routes";
+import workspaceRoutes from "./modules/workspace/workspace.routes";
 import { errorHandler, notFoundHandler } from "./middleware/error.middleware";
 
 const app = express();
@@ -37,6 +38,7 @@ app.get("/health", (_req, res) => {
 });
 
 app.use("/api/auth", authLimiter, authRoutes);
+app.use("/api/workspaces", workspaceRoutes);
 
 // 404 + centralized error handling — must be registered after routes.
 app.use(notFoundHandler);
