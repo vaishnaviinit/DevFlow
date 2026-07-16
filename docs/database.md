@@ -1,279 +1,243 @@
-Required tables:
----------------
-User
+# Database
+
+> The DevFlow data model: the Prisma schema, the models that exist today, their relationships, and how migrations work.
+> Related: [backend.md](backend.md) · [authentication.md](authentication.md) · [architecture.md](architecture.md)
+
+---
+
+## Purpose
+
+This document describes the database as it actually is, and the shape it is planned to grow into. It is the reference for anyone adding a model or writing a query. The database is PostgreSQL, and it is accessed only through Prisma from within services (see [backend.md](backend.md)).
+
+---
+
+## Overview
+
+- **Database:** PostgreSQL 14 or newer.
+- **Toolkit:** [Prisma](https://www.prisma.io) — the schema in `prisma/schema.prisma` is the single source of truth, migrations are versioned SQL, and queries are type-safe.
+- **Identifiers:** every model uses a `cuid()` string as its primary key. CUIDs are collision-resistant and non-sequential, so ids do not leak record counts or ordering.
+- **Timestamps:** models carry `createdAt` and `updatedAt`, managed by Prisma.
+
+> [!IMPORTANT]
+> Only three models exist today: `User`, `Workspace`, and `WorkspaceMember` (plus the `WorkspaceRole` enum). Everything else on the [product roadmap](roadmap.md) — Project, Task, Message, Whiteboard, Notification, and so on — is **planned** and not yet in the schema. This document marks each clearly.
+
+---
+
+## Current Schema
+
+```prisma
+model User {
+  id           String            @id @default(cuid())
+  name         String
+  email        String            @unique
+  passwordHash String
+  avatar       String?
+  bio          String?
+  githubUrl    String?
+  linkedinUrl  String?
+  isActive     Boolean           @default(true)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  lastLoginAt  DateTime?
+  refreshToken String?
+  memberships  WorkspaceMember[]
+}
+
+model Workspace {
+  id          String            @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  members     WorkspaceMember[]
+}
+
+model WorkspaceMember {
+  id          String        @id @default(cuid())
+  workspaceId String
+  userId      String
+  role        WorkspaceRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+  user        User          @relation(fields: [userId], references: [id])
+  workspace   Workspace     @relation(fields: [workspaceId], references: [id])
+
+  @@unique([workspaceId, userId])
+}
+
+enum WorkspaceRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+```
+
+---
+
+## Entity Relationship Diagram (Current)
+
+```mermaid
+erDiagram
+    USER ||--o{ WORKSPACE_MEMBER : "has memberships"
+    WORKSPACE ||--o{ WORKSPACE_MEMBER : "has members"
+
+    USER {
+        string id PK
+        string name
+        string email UK
+        string passwordHash
+        boolean isActive
+        datetime lastLoginAt
+        string refreshToken
+    }
+    WORKSPACE {
+        string id PK
+        string name
+        string ownerId
+    }
+    WORKSPACE_MEMBER {
+        string id PK
+        string workspaceId FK
+        string userId FK
+        enum role
+        datetime joinedAt
+    }
+```
 
-Workspace
+`WorkspaceMember` is a **join table**. A user can belong to many workspaces, and a workspace can have many members; the join table represents that many-to-many relationship and also stores each member's role.
 
-WorkspaceMember
+---
 
-Project
+## Relationships and Constraints
 
-Task
+| Relationship | Type | How it is enforced |
+|---|---|---|
+| User ↔ Workspace | Many-to-many | Through `WorkspaceMember` |
+| WorkspaceMember → User | Many-to-one | `userId` foreign key |
+| WorkspaceMember → Workspace | Many-to-one | `workspaceId` foreign key |
+| One membership per user per workspace | Uniqueness | `@@unique([workspaceId, userId])` |
+| One account per email | Uniqueness | `@unique` on `User.email` |
 
-Message
+> [!NOTE]
+> `Workspace.ownerId` currently records the owner as a plain field, not a formal foreign-key relation to `User`. Making it a proper relation is a small planned refinement once the workspace module is built.
 
-Whiteboard
+---
 
-WhiteboardElement
+## Indexes
 
-Notification
+Indexes make lookups fast. The current schema has these, created automatically by Prisma:
 
-GithubConnection
+- **Primary keys** on every `id`.
+- **`User.email`** — unique, and used on every login and registration lookup.
+- **`WorkspaceMember(workspaceId, userId)`** — the unique composite, which also speeds up membership checks.
 
+> [!TIP]
+> The rule going forward: add an index whenever a query filters, sorts, or joins on a column. For example, when the Task model arrives, `Task.projectId` and `Task.assigneeId` will need indexes because tasks are constantly listed by project and by assignee.
 
-Database ER digram 
-------------------
+---
 
-User
-  │
-  ├── WorkspaceMember
-  │        │
-  │        ▼
-  │    Workspace
-  │        │
-  │   ┌────┼────┐
-  │   │    │    │
-  ▼   ▼    ▼    ▼
-Project Message Whiteboard
-  │              │
-  ▼              ▼
-Task      WhiteboardElement
+## Planned Schema
 
-User
- ├── Notification
- └── GithubConnection
+The models below are on the roadmap and are shown here so the data model's direction is clear. They are **not yet implemented**.
 
+```mermaid
+erDiagram
+    USER ||--o{ WORKSPACE_MEMBER : has
+    WORKSPACE ||--o{ WORKSPACE_MEMBER : has
+    WORKSPACE ||--o{ PROJECT : contains
+    PROJECT  ||--o{ TASK : contains
+    USER     ||--o{ TASK : "assigned / created"
+    WORKSPACE ||--o{ MESSAGE : contains
+    USER     ||--o{ MESSAGE : sends
+    WORKSPACE ||--o{ WHITEBOARD : contains
+    WHITEBOARD ||--o{ WHITEBOARD_ELEMENT : contains
+    USER     ||--o{ NOTIFICATION : receives
+    USER     ||--|| GITHUB_CONNECTION : has
+```
 
-Database
---------
+| Planned model | Purpose |
+|---|---|
+| `Project` | Groups tasks inside a workspace |
+| `Task` | A unit of work with status, priority, assignee, due date |
+| `Message` | A chat message in a workspace |
+| `Whiteboard` / `WhiteboardElement` | A canvas and the shapes on it |
+| `Notification` | An event for a user, with read state |
+| `GithubConnection` | A user's linked GitHub account and token |
 
-User
+These will follow the same conventions: `cuid()` ids, timestamps, foreign keys with matching indexes, and enums for fixed value sets (task status, priority, notification type).
 
-↓
+---
 
-Workspace
+## Migrations
 
-↓
+Prisma migrations are versioned SQL files in `prisma/migrations/`. Two exist so far:
 
-Project
+| Migration | Contents |
+|---|---|
+| `..._init` | Created `User`, `Workspace`, `WorkspaceMember`, and the `WorkspaceRole` enum |
+| `..._auth_fields` | Added authentication-related fields to `User` |
 
-↓
+**Workflow:**
 
-Task
+```bash
+# After editing schema.prisma, create and apply a migration in development
+npm run prisma:migrate      # prisma migrate dev
 
+# Regenerate the type-safe client (also runs as part of migrate)
+npm run prisma:generate
 
-Collection Hireachy
--------------------
+# In production, apply existing migrations without generating new ones
+npx prisma migrate deploy
+```
 
-Workspace
- ├ Members
- ├ Projects
- │    └ Tasks
- ├ Chat
- ├ Whiteboards
- ├ Notifications
- └ Github Integration
+> [!WARNING]
+> Never edit a migration that has already been applied to a shared or production database. Create a new migration instead. Changing applied migrations puts environments out of sync.
 
-# Relationships
+---
 
-User ↔ Workspace (M:N)
+## Design Decisions
 
-Workspace ↔ Project (1:N)
+| Decision | Choice | Rationale |
+|---|---|---|
+| Primary keys | `cuid()` strings | Non-sequential; do not leak counts or order |
+| Many-to-many | Explicit join table (`WorkspaceMember`) | Lets the relationship carry data (role, joinedAt) |
+| Fixed value sets | Enums (`WorkspaceRole`) | Type-safe and self-documenting |
+| Uniqueness | Database constraints | The real guarantee, not just app checks |
+| Schema location | One `schema.prisma` | Single source of truth for the model |
 
-Project ↔ Task (1:N)
+---
 
-User ↔ Task (1:N)
+## Tradeoffs
 
-Workspace ↔ Message (1:N)
+- **CUID vs auto-increment integers:** CUIDs are safer to expose and easier to merge across systems, at the cost of slightly larger keys. For this application the safety is worth it.
+- **Explicit join table** adds a model, but it is what allows a membership to have a role and a join date — a plain implicit relation could not.
+- **Prisma** gives excellent type safety; genuinely complex queries occasionally need raw SQL, which Prisma supports when needed.
 
-User ↔ Message (1:N)
+---
 
-Workspace ↔ Whiteboard (1:N)
+## Scalability
 
-Whiteboard ↔ WhiteboardElement (1:N)
+The near-term scaling levers are covered in [system-design.md](system-design.md#database-scaling): add indexes as query patterns appear, introduce connection pooling once there is more than one backend instance, then read replicas for read-heavy load, and partitioning for very large tables such as messages. None of this changes the schema; it changes how the database is deployed.
 
-User ↔ Notification (1:N)
+---
 
-User ↔ GithubConnection (1:1)
+## Best Practices
 
-Table Definition
-----------------
+- Access the database only from services, never from controllers.
+- Use a Prisma `select` to return only the fields a response needs, and never select `passwordHash` or `refreshToken`.
+- Add an index whenever a new query filters, sorts, or joins on a column.
+- Enforce real invariants with database constraints, not only application code.
+- Create a new migration for every schema change; never edit an applied one.
 
-## User
+---
 
-Fields:
+## Developer Notes
 
-id
-name
-email
-passwordHash
-avatar
-bio
-githubUrl
-linkedinUrl
-createdAt
-updatedAt
+- `passwordHash` and `refreshToken` are sensitive columns on `User`. The auth service uses a `publicUserSelect` that excludes them (see [authentication.md](authentication.md)).
+- `refreshToken` exists but is unused; it is reserved for the planned refresh-token flow.
+- `isActive` supports deactivating accounts; the `/me` endpoint reads the live record so a deactivation takes effect immediately.
+- Open `npm run prisma:studio` to browse and edit the database visually during development.
 
-Relationships:
+---
 
-- Belongs to many Workspaces (through WorkspaceMember)
-- Has many Tasks
-- Has many Messages
-- Has many Notifications
-- Has one GithubConnection
-
-## Workspace
-
-Fields:
-
-id
-name
-description
-ownerId
-createdAt
-updatedAt
-
-Relationships:
-
-- Has many Members
-- Has many Projects
-- Has many Messages
-- Has many Whiteboards
-
-## WorkspaceMember
-
-Fields:
-
-id
-workspaceId
-userId
-role -------------(ADMIN,OWNER,MEMBER)
-joinedAt
-
-Relationships:
-
-- Belongs to User
-- Belongs to Workspace
-
-## Project
-
-Fields:
-
-id
-workspaceId
-name
-description
-createdBy
-createdAt
-updatedAt
-
-Relationships:
-
-- Belongs to Workspace
-- Has many Tasks
-- Created by User
-
-## Task
-
-Fields:
-
-id
-projectId
-title
-description
-status --------(TODO,IN_PROGRESS,REVIEW,DONE)
-priority -------------(LOW,MEDIUM,HIGH,URGENT)
-assigneeId
-createdBy
-dueDate
-createdAt
-updatedAt
-
-Relationships:
-
-- Belongs to Project
-- Assigned to User
-- Created by User
-
-## Message
-
-Fields:
-
-id
-workspaceId
-senderId
-content
-createdAt
-updatedAt
-
-Relationships:
-
-- Belongs to Workspace
-- Sent by User
-
-## Whiteboard
-
-Fields:
-
-id
-workspaceId
-name
-createdBy
-createdAt
-updatedAt
-
-Relationships:
-
-- Belongs to Workspace
-- Has many WhiteboardElements
-- Created by User
-
-## WhiteboardElement
-
-Fields:
-
-id
-whiteboardId
-type ----------------(RECTANGLE,CIRCLE,ARROW,LINE,TEXT,STICKY_NOTE,IMAGE)
-payload---------------(json format--- x,y,width,height,rotation,colour)
-createdBy
-createdAt
-updatedAt
-
-Relationships:
-
-- Belongs to Whiteboard
-- Created by User
-
-## Notification
-
-Fields:
-
-id
-userId
-title
-message
-type ----------(TASK_ASSIGNED,TASK_UPDATED,PROJECT_CREATED,WORKSPACE_INVITE,MESSAGE_RECEIVED,GITHUB_EVENT)
-isRead
-createdAt
-
-Relationships:
-
-- Belongs to User
-
-## GithubConnection
-
-Fields:
-
-id
-userId
-githubId
-username
-avatarUrl
-accessToken
-connectedAt
-updatedAt
-
-Relationships:
-
-- Belongs to User
+_Next: [api.md](api.md) — API conventions, response format, and endpoints._
