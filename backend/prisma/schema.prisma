@@ -22,6 +22,7 @@ model User {
   lastLoginAt  DateTime?
   refreshToken String?
   memberships  WorkspaceMember[]
+  ownedWorkspaces Workspace[]     @relation("WorkspaceOwner")
 }
 
 model Workspace {
@@ -31,6 +32,8 @@ model Workspace {
   ownerId     String
   createdAt   DateTime          @default(now())
   updatedAt   DateTime          @updatedAt
+  deletedAt   DateTime?
+  owner       User              @relation("WorkspaceOwner", fields: [ownerId], references: [id])
   members     WorkspaceMember[]
 }
 
@@ -44,6 +47,7 @@ model WorkspaceMember {
   workspace   Workspace     @relation(fields: [workspaceId], references: [id])
 
   @@unique([workspaceId, userId])
+  @@index([userId])
 }
 
 enum WorkspaceRole {
