@@ -1,74 +1,78 @@
-import jwt, { SignOptions } from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { prisma } from "../../config/prisma";
 import { env } from "../../config/env";
+import { signAccessToken } from "../../utils/jwt";
+import { Conflict, Unauthorized, NotFound } from "../../utils/app-error";
+import type { RegisterInput, LoginInput } from "./auth.validation";
 
-export const registerUser = async (
-  name: string,
-  email: string,
-  password: string
-) => {
-  const existingUser = await prisma.user.findUnique({
-    where: { email },
-  });
+/**
+ * Fields safe to return to the client. Using a Prisma `select` guarantees the
+ * password hash (and any future secret column) can never leak, even if the
+ * model grows new sensitive fields.
+ */
+const publicUserSelect = {
+  id: true,
+  name: true,
+  email: true,
+  avatar: true,
+  bio: true,
+  githubUrl: true,
+  linkedinUrl: true,
+  isActive: true,
+  createdAt: true,
+  updatedAt: true,
+} as const;
 
-  if (existingUser) {
-    throw new Error("User already exists");
+export const registerUser = async ({ name, email, password }: RegisterInput) => {
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    throw Conflict("An account with this email already exists");
   }
 
-  const passwordHash = await bcrypt.hash(password, 10);
+  const passwordHash = await bcrypt.hash(password, env.BCRYPT_SALT_ROUNDS);
 
   const user = await prisma.user.create({
-    data: {
-      name,
-      email,
-      passwordHash,
-    },
+    data: { name, email, passwordHash },
+    select: publicUserSelect,
   });
 
-  const { passwordHash: _, ...safeUser } = user;
-
-  return safeUser;
+  const token = signAccessToken({ sub: user.id, email: user.email });
+  return { user, token };
 };
 
-export const loginUser = async (
-  email: string,
-  password: string
-) => {
+export const loginUser = async ({ email, password }: LoginInput) => {
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Always run bcrypt.compare even when the user is missing, using a dummy
+  // hash, to keep response time constant and avoid a user-enumeration timing
+  // side channel.
+  const passwordHash =
+    user?.passwordHash ??
+    "$2a$12$0000000000000000000000000000000000000000000000000000";
+
+  const valid = await bcrypt.compare(password, passwordHash);
+
+  if (!user || !valid) {
+    throw Unauthorized("Invalid email or password");
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { lastLoginAt: new Date() },
+  });
+
+  const token = signAccessToken({ sub: user.id, email: user.email });
+  const { passwordHash: _removed, refreshToken: _rt, ...safeUser } = user;
+  return { user: safeUser, token };
+};
+
+export const getUserById = async (id: string) => {
   const user = await prisma.user.findUnique({
-    where: { email },
+    where: { id },
+    select: publicUserSelect,
   });
-
   if (!user) {
-    throw new Error("Invalid email or password");
+    throw NotFound("User not found");
   }
-
-  const validPassword = await bcrypt.compare(
-    password,
-    user.passwordHash
-  );
-
-  if (!validPassword) {
-    throw new Error("Invalid email or password");
-  }
-
-  const signOptions: SignOptions = {
-  expiresIn: env.JWT_EXPIRES_IN as SignOptions["expiresIn"],
-};
-
-const token = jwt.sign(
-  {
-    id: user.id,
-    email: user.email,
-  },
-  env.JWT_SECRET,
-  signOptions
-);
-
-  const { passwordHash, ...safeUser } = user;
-
-  return {
-    user: safeUser,
-    token,
-  };
+  return user;
 };

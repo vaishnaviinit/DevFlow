@@ -1,73 +1,22 @@
-import { Response } from "express";
-import { Request } from "express";
-import { registerUser, loginUser } from "./auth.service";
+import { Request, Response } from "express";
+import { registerUser, loginUser, getUserById } from "./auth.service";
+import { asyncHandler } from "../../utils/async-handler";
+import { sendSuccess } from "../../utils/response";
 import { AuthRequest } from "../../middleware/auth.middleware";
 
-//register function
-export const register = async (
-  req: Request,
-  res: Response
-) => {
-  try {
-    const { name, email, password } = req.body;
+export const register = asyncHandler(async (req: Request, res: Response) => {
+  const result = await registerUser(req.body);
+  sendSuccess(res, result, 201);
+});
 
-    const user = await registerUser(
-      name,
-      email,
-      password
-    );
+export const login = asyncHandler(async (req: Request, res: Response) => {
+  const result = await loginUser(req.body);
+  sendSuccess(res, result, 200);
+});
 
-    return res.status(201).json({
-      success: true,
-      user,
-    });
-  } catch (error: any) {
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-//login function
-export const login = async (
-  req: Request,
-  res: Response
-) => {
-
-  try {
-
-    const { email, password } = req.body;
-
-    const result = await loginUser(
-      email,
-      password
-    );
-
-    return res.status(200).json({
-      success: true,
-      ...result,
-    });
-
-  } catch (error: any) {
-
-    return res.status(400).json({
-      success: false,
-      message: error.message,
-    });
-
-  }
-
-};
-
-export const me = async (
-  req: AuthRequest,
-  res: Response
-) => {
-
-  return res.json({
-    success: true,
-    user: req.user,
-  });
-
-};
+export const me = asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Fetch the current record rather than trusting the (possibly stale) token
+  // payload — the user may have been updated or deactivated since sign-in.
+  const user = await getUserById(req.user!.id);
+  sendSuccess(res, { user }, 200);
+});

@@ -1,58 +1,39 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
-import { env } from "../config/env";
+import { verifyAccessToken } from "../utils/jwt";
+import { Unauthorized } from "../utils/app-error";
 
-interface JwtPayload {
+/** The authenticated user attached to the request by `authenticate`. */
+export interface AuthUser {
   id: string;
   email: string;
 }
 
 export interface AuthRequest extends Request {
-  user?: JwtPayload;
+  user?: AuthUser;
 }
 
+/**
+ * Verifies the `Authorization: Bearer <token>` header and attaches the decoded
+ * user to `req.user`. Errors are forwarded to the central error handler.
+ */
 export const authenticate = (
   req: AuthRequest,
-  res: Response,
+  _res: Response,
   next: NextFunction
-) => {
+): void => {
+  const authHeader = req.headers.authorization;
 
-  try {
-
-    const authHeader = req.headers.authorization;
-
-    if (!authHeader) {
-      return res.status(401).json({
-        success: false,
-        message: "Token missing",
-      });
-    }
-
-    const token = authHeader.split(" ")[1];
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: "Token missing",
-      });
-    }
-
-    const decoded = jwt.verify(
-      token,
-      env.JWT_SECRET
-    ) as JwtPayload;
-
-    req.user = decoded;
-
-    next();
-
-  } catch {
-
-    return res.status(401).json({
-      success: false,
-      message: "Invalid token",
-    });
-
+  if (!authHeader?.startsWith("Bearer ")) {
+    return next(Unauthorized("Authentication token missing"));
   }
 
+  const token = authHeader.slice("Bearer ".length).trim();
+
+  if (!token) {
+    return next(Unauthorized("Authentication token missing"));
+  }
+
+  const payload = verifyAccessToken(token);
+  req.user = { id: payload.sub, email: payload.email };
+  next();
 };
